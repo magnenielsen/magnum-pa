@@ -45,8 +45,11 @@ self.addEventListener("fetch", (e) => {
   const isShell = req.mode === "navigate" || new URL(req.url).pathname.endsWith("index.html");
 
   if (isShell) {
+    // Bypass the HTTP cache, not just Cache Storage. GitHub Pages serves HTML
+    // with max-age=600, so a plain fetch() here is answered by the browser's
+    // own cache and "network-first" silently becomes "up to ten minutes old".
     e.respondWith(
-      fetch(req).then((res) => {
+      fetch(req.url, { cache: "no-store", credentials: "same-origin" }).then((res) => {
         const copy = res.clone();
         caches.open(CACHE).then((cache) => cache.put(req, copy));
         return res;
