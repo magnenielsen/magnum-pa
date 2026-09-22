@@ -79,7 +79,8 @@ Then open <http://localhost:8778> — `localhost` counts as a secure origin, so 
 
 ## Known limitations
 
-- **iOS Safari** may downgrade the Bluetooth speaker to call-quality (mono, narrowband) audio while the mic is active. This is an OS-level routing behavior, not something the app controls.
+- **Echo cancellation silences the passthrough — leave it off.** This is not a bug and not fixable. An acoustic echo canceller removes whatever the speaker is playing from the mic signal, using the output stream as its reference. In a PA the output stream *is* the mic signal, so the canceller adapts to it and subtracts nearly all of it, leaving something close to silence. The toggle is still there because the constraint is the browser's to honour or ignore, but the app now warns when you switch it on. If you are chasing feedback, distance and gain are the tools, not AEC.
+- **iOS Safari** may downgrade the Bluetooth speaker to call-quality (mono, narrowband) audio while the mic is active. This is an OS-level routing behavior, not something the app controls. Requesting echo cancellation or noise suppression makes this more likely, since both push the OS into its voice-processing mode.
 - Bluetooth introduces ~150–300ms latency — expected, not a bug.
 - No mic passthrough while the phone is locked (screen wake lock keeps it live, but locking still suspends `getUserMedia` on most mobile browsers).
 - Feedback risk: keep the phone physically away from the speaker, or use headphones for monitoring if the venue is loud.
