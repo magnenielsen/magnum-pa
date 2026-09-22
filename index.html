@@ -1,0 +1,1116 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Magnum PA</title>
+
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#0d0f11">
+<link rel="icon" href="icon-192.png">
+<link rel="apple-touch-icon" href="icon-192.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Magnum PA">
+<meta name="mobile-web-app-capable" content="yes">
+
+<style>
+  :root {
+    box-sizing: border-box;
+    padding-top: env(safe-area-inset-top, 0px);
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+    --bg: #0d0f11;
+    --panel: #16191d;
+    --panel-2: #1c2026;
+    --line: #2a2f37;
+    --txt: #e8e6e0;
+    --dim: #7b828d;
+    --accent: #ff4d2e;
+    --ok: #43d17a;
+    --warn: #ffb02e;
+    --blue: #4d9bff;
+  }
+  html { scroll-padding-top: env(safe-area-inset-top, 0px); }
+  html, body { height: 100%; }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--txt);
+    font-family: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, monospace;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    -webkit-tap-highlight-color: transparent;
+    user-select: none;
+    overscroll-behavior-y: contain;
+  }
+  body::before {
+    content: "";
+    position: fixed; inset: 0;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2'/%3E%3C/filter%3E%3Crect width='120' height='120' filter='url(%23n)' opacity='0.05'/%3E%3C/svg%3E");
+    pointer-events: none;
+  }
+  .app {
+    width: 100%;
+    max-width: 460px;
+    padding: clamp(14px, 4vw, 22px);
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    flex: 1;
+    min-height: 100%;
+  }
+  header {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    border-bottom: 1px solid var(--line);
+    padding-bottom: 10px;
+  }
+  h1 {
+    font-size: clamp(1.05rem, 5vw, 1.3rem);
+    margin: 0;
+    letter-spacing: 0.12em;
+    font-weight: 700;
+  }
+  h1 span { color: var(--accent); }
+  .status {
+    font-size: 0.64rem;
+    letter-spacing: 0.1em;
+    color: var(--dim);
+    text-transform: uppercase;
+  }
+  .status.live { color: var(--ok); }
+  .status.err { color: var(--accent); }
+
+  /* Tabs */
+  .tabs {
+    display: flex;
+    border: 1px solid var(--line);
+  }
+  .tab {
+    all: unset;
+    flex: 1;
+    text-align: center;
+    padding: 10px 0;
+    font-size: 0.68rem;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--dim);
+    cursor: pointer;
+    border-right: 1px solid var(--line);
+  }
+  .tab:last-child { border-right: none; }
+  .tab.active { color: var(--txt); background: var(--panel); }
+  .tab.active.mic-tab { color: var(--accent); }
+  .tab.active.board-tab { color: var(--blue); }
+
+  .view { display: none; flex-direction: column; gap: 12px; }
+  .view.active { display: flex; }
+
+  /* Level meter */
+  .meter-wrap {
+    background: var(--panel);
+    border: 1px solid var(--line);
+    padding: 12px;
+  }
+  .meter-label {
+    display: flex;
+    justify-content: space-between;
+    font-size: 0.6rem;
+    color: var(--dim);
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    margin-bottom: 8px;
+  }
+  .meter {
+    height: 24px;
+    background: #0a0c0e;
+    border: 1px solid var(--line);
+    position: relative;
+    overflow: hidden;
+  }
+  .meter-fill {
+    position: absolute; inset: 0;
+    transform-origin: left;
+    transform: scaleX(0);
+    background: linear-gradient(90deg, var(--ok) 0 62%, var(--warn) 62% 85%, var(--accent) 85%);
+    transition: transform 60ms linear;
+  }
+  .meter-ticks {
+    position: absolute; inset: 0;
+    background: repeating-linear-gradient(90deg, transparent 0 9px, var(--bg) 9px 10px);
+    opacity: 0.55;
+    pointer-events: none;
+  }
+  .clip { font-size: 0.6rem; color: var(--dim); }
+  .clip.on { color: var(--accent); font-weight: 700; }
+
+  .talk {
+    all: unset;
+    display: grid;
+    place-items: center;
+    aspect-ratio: 1;
+    width: min(56vw, 220px);
+    margin: 4px auto;
+    border-radius: 50%;
+    background: radial-gradient(circle at 35% 30%, var(--panel-2), var(--panel) 70%);
+    border: 1px solid var(--line);
+    box-shadow: 0 10px 30px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.05);
+    cursor: pointer;
+    text-align: center;
+    transition: transform 120ms cubic-bezier(0.16, 1, 0.3, 1), box-shadow 120ms;
+  }
+  .talk:active { transform: scale(0.97); }
+  .talk .big { font-size: 1rem; letter-spacing: 0.18em; font-weight: 700; }
+  .talk .sub {
+    font-size: 0.58rem; color: var(--dim); letter-spacing: 0.1em;
+    margin-top: 6px; text-transform: uppercase;
+  }
+  .talk.live {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 4px rgba(255,77,46,0.15), 0 0 34px rgba(255,77,46,0.35), inset 0 1px 0 rgba(255,255,255,0.05);
+  }
+  .talk.live .big { color: var(--accent); }
+
+  .panel {
+    background: var(--panel);
+    border: 1px solid var(--line);
+    padding: 14px;
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+  }
+  .row { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
+  label, .lbl {
+    font-size: 0.66rem; letter-spacing: 0.1em; text-transform: uppercase; color: var(--dim);
+  }
+  input[type="range"] {
+    -webkit-appearance: none; appearance: none;
+    flex: 1; height: 4px; background: var(--line); outline: none;
+  }
+  input[type="range"]::-webkit-slider-thumb {
+    -webkit-appearance: none; width: 22px; height: 22px;
+    background: var(--txt); border: 2px solid var(--bg); border-radius: 50%; cursor: pointer;
+  }
+  .val { font-size: 0.72rem; min-width: 3.2em; text-align: right; }
+  .toggle {
+    all: unset; font-size: 0.66rem; letter-spacing: 0.1em; text-transform: uppercase;
+    border: 1px solid var(--line); padding: 7px 12px; cursor: pointer; color: var(--dim);
+  }
+  .toggle.on { color: var(--ok); border-color: var(--ok); }
+  .note { font-size: 0.62rem; line-height: 1.6; color: var(--dim); }
+  .note b { color: var(--txt); font-weight: 600; }
+
+  /* Soundboard */
+  .board-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 10px;
+  }
+  .fx-btn {
+    all: unset;
+    background: var(--panel);
+    border: 1px solid var(--line);
+    padding: 16px 10px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 6px;
+    cursor: pointer;
+    transition: transform 90ms cubic-bezier(0.16,1,0.3,1), border-color 90ms, box-shadow 90ms;
+    text-align: center;
+  }
+  .fx-btn:active {
+    transform: scale(0.95);
+    border-color: var(--blue);
+    box-shadow: 0 0 20px rgba(77,155,255,0.35);
+  }
+  .fx-btn.playing { border-color: var(--blue); box-shadow: 0 0 0 3px rgba(77,155,255,0.15); }
+  .fx-icon { font-size: 1.5rem; line-height: 1; }
+  .fx-name { font-size: 0.62rem; letter-spacing: 0.08em; text-transform: uppercase; color: var(--txt); }
+
+  .stop-all {
+    all: unset;
+    text-align: center;
+    padding: 10px;
+    border: 1px solid var(--accent);
+    color: var(--accent);
+    font-size: 0.66rem;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    cursor: pointer;
+  }
+
+  .board-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .find-btn {
+    all: unset;
+    text-align: center;
+    padding: 10px;
+    border: 1px solid var(--blue);
+    color: var(--blue);
+    font-size: 0.66rem;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    cursor: pointer;
+  }
+  .fx-btn.custom { border-color: var(--warn); }
+  .fx-btn.loading { opacity: 0.45; }
+
+  /* Find-sounds sheet */
+  .sheet {
+    position: fixed; inset: 0; z-index: 50;
+    background: var(--bg);
+    display: flex; flex-direction: column;
+    padding-top: env(safe-area-inset-top, 0px);
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+  }
+  .sheet[hidden] { display: none; }
+  .sheet-head {
+    display: flex; justify-content: space-between; align-items: center;
+    padding: 14px 16px; border-bottom: 1px solid var(--line);
+    font-size: 0.7rem; letter-spacing: 0.14em; text-transform: uppercase;
+  }
+  .sheet-head button { all: unset; cursor: pointer; color: var(--dim); font-size: 1rem; padding: 0 6px; }
+  .sheet-body {
+    flex: 1; overflow-y: auto; -webkit-overflow-scrolling: touch;
+    padding: 14px 16px; display: flex; flex-direction: column; gap: 12px;
+    width: 100%; max-width: 460px; margin: 0 auto;
+  }
+  .sheet-body input[type=text], .sheet-body input[type=password] {
+    all: unset; flex: 1; min-width: 0;
+    background: var(--panel); border: 1px solid var(--line);
+    padding: 9px 10px; color: var(--txt); font-family: inherit; font-size: 0.72rem;
+  }
+  .sheet-body input:focus { border-color: var(--blue); }
+  .search-row { display: flex; gap: 8px; }
+  .search-row button, .sheet-btn {
+    all: unset; cursor: pointer; text-align: center;
+    border: 1px solid var(--blue); color: var(--blue);
+    padding: 9px 12px; font-size: 0.62rem; letter-spacing: 0.1em; text-transform: uppercase;
+  }
+  .sheet-btn.ghost { border-color: var(--line); color: var(--dim); }
+  .sheet-note { font-size: 0.62rem; color: var(--dim); line-height: 1.55; }
+  .sheet-note a { color: var(--blue); }
+  .cc0-row { display: flex; align-items: center; gap: 8px; font-size: 0.62rem; color: var(--dim); }
+  .status { min-height: 1em; }
+  .result {
+    border: 1px solid var(--line); background: var(--panel); padding: 10px;
+    display: flex; flex-direction: column; gap: 8px;
+  }
+  .result-top { display: flex; justify-content: space-between; gap: 10px; align-items: baseline; }
+  .result-name { font-size: 0.68rem; color: var(--txt); word-break: break-word; }
+  .result-meta { font-size: 0.56rem; color: var(--dim); white-space: nowrap; }
+  .result-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+  .result-actions button {
+    all: unset; cursor: pointer; border: 1px solid var(--line); color: var(--dim);
+    padding: 5px 9px; font-size: 0.58rem; letter-spacing: 0.08em; text-transform: uppercase;
+  }
+  .result-actions button.primary { border-color: var(--blue); color: var(--blue); }
+  .pad-pick { display: flex; flex-wrap: wrap; gap: 6px; }
+  .pad-pick button {
+    all: unset; cursor: pointer; border: 1px solid var(--warn); color: var(--warn);
+    padding: 5px 8px; font-size: 0.56rem; letter-spacing: 0.06em; text-transform: uppercase;
+  }
+
+  .install-banner {
+    display: none;
+    background: var(--panel-2);
+    border: 1px solid var(--blue);
+    padding: 10px 12px;
+    font-size: 0.64rem;
+    color: var(--txt);
+    justify-content: space-between;
+    align-items: center;
+    gap: 10px;
+  }
+  .install-banner.show { display: flex; }
+  .install-banner button {
+    all: unset;
+    color: var(--blue);
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    font-size: 0.62rem;
+    cursor: pointer;
+    border: 1px solid var(--blue);
+    padding: 6px 10px;
+  }
+
+  footer {
+    margin-top: auto;
+    font-size: 0.56rem;
+    color: var(--dim);
+    text-align: center;
+    letter-spacing: 0.08em;
+    padding-bottom: 8px;
+    padding-top: 6px;
+  }
+</style>
+</head>
+<body>
+<div class="app">
+  <header>
+    <h1>MAGNUM<span> PA</span></h1>
+    <div class="status" id="status">standby</div>
+  </header>
+
+  <div class="install-banner" id="installBanner">
+    <span>Install Magnum PA for one-tap launch.</span>
+    <button id="installBtn">Install</button>
+  </div>
+
+  <div class="tabs">
+    <button class="tab mic-tab active" data-view="mic">Mic</button>
+    <button class="tab board-tab" data-view="board">Board</button>
+  </div>
+
+  <!-- MIC VIEW -->
+  <div class="view active" id="view-mic">
+    <div class="meter-wrap">
+      <div class="meter-label"><span>input level</span><span class="clip" id="clip">clip</span></div>
+      <div class="meter"><div class="meter-fill" id="meterFill"></div><div class="meter-ticks"></div></div>
+    </div>
+
+    <button class="talk" id="talkBtn">
+      <div>
+        <div class="big" id="talkLabel">GO LIVE</div>
+        <div class="sub" id="talkSub">tap to open mic</div>
+      </div>
+    </button>
+
+    <div class="panel">
+      <div class="row">
+        <span class="lbl">Gain</span>
+        <input type="range" id="gain" min="0" max="3" step="0.05" value="1">
+        <span class="val" id="gainVal">1.00×</span>
+      </div>
+      <div class="row">
+        <span class="lbl">Echo cancel</span>
+        <button class="toggle" id="ecBtn">off</button>
+      </div>
+      <div class="row">
+        <span class="lbl">Noise suppress</span>
+        <button class="toggle" id="nsBtn">off</button>
+      </div>
+    </div>
+
+    <div class="panel">
+      <div class="note">
+        <b>Setup:</b> pair the phone to the speaker first, then go live.
+        Toggling echo/noise restarts the mic. Expect ~150–300&nbsp;ms Bluetooth delay.
+        Keep the phone away from the speaker to avoid feedback.
+        <b>iOS</b> may drop the speaker to call-quality audio while the mic is open.
+      </div>
+    </div>
+  </div>
+
+  <!-- BOARD VIEW -->
+  <div class="view" id="view-board">
+    <div class="panel" style="padding:12px;">
+      <div class="row">
+        <span class="lbl">FX Volume</span>
+        <input type="range" id="fxVol" min="0" max="1.5" step="0.05" value="1">
+        <span class="val" id="fxVolVal">100%</span>
+      </div>
+      <div class="row">
+        <span class="lbl">Duck mic on play</span>
+        <button class="toggle on" id="duckBtn">on</button>
+      </div>
+    </div>
+
+    <div class="board-grid" id="boardGrid"></div>
+
+    <div class="board-actions">
+      <button class="stop-all" id="stopAll">■ STOP ALL</button>
+      <button class="find-btn" id="findBtn">⌕ FIND SOUNDS</button>
+    </div>
+
+    <div class="panel">
+      <div class="note">
+        Ten CC0 sounds from Freesound, bundled with the app and normalized on load.
+        Use <b>Find Sounds</b> to search Freesound and swap any pad — your picks are stored
+        on the phone and work offline. Effects mix into the same output as the mic, so they
+        play through the paired speaker too.
+      </div>
+    </div>
+  </div>
+
+  <footer>MAGNUM PA · runs entirely on this device · no audio leaves the phone</footer>
+</div>
+
+<div class="sheet" id="searchSheet" hidden>
+  <div class="sheet-head">
+    <span>Find sounds</span>
+    <button id="sheetClose" aria-label="Close">✕</button>
+  </div>
+  <div class="sheet-body">
+
+    <div id="keySetup" hidden>
+      <div class="sheet-note" style="margin-bottom:10px;">
+        Searching uses the Freesound API, which needs a free key. Get one at
+        <a href="https://freesound.org/apiv2/apply/" target="_blank" rel="noopener">freesound.org/apiv2/apply</a>
+        while signed in, then paste it here. It is stored only in this browser and is sent
+        only to freesound.org.
+      </div>
+      <div class="search-row">
+        <input type="password" id="keyInput" placeholder="Freesound API key" autocomplete="off" spellcheck="false">
+        <button id="keySave">Save</button>
+      </div>
+    </div>
+
+    <div id="searchMain" hidden>
+      <div class="search-row">
+        <input type="text" id="searchQ" placeholder="air horn, applause, fanfare…" autocomplete="off">
+        <button id="searchGo">Search</button>
+      </div>
+      <label class="cc0-row">
+        <input type="checkbox" id="cc0Only" checked>
+        CC0 only — no attribution needed, safe to ship
+      </label>
+      <div class="sheet-note status" id="searchStatus"></div>
+      <div id="searchResults" style="display:flex;flex-direction:column;gap:10px;"></div>
+      <div id="customList" style="display:flex;flex-direction:column;gap:8px;"></div>
+      <button class="sheet-btn ghost" id="forgetKey">Forget API key</button>
+    </div>
+
+  </div>
+</div>
+
+<script>
+/* ---------- Service worker + install prompt ---------- */
+if ("serviceWorker" in navigator) {
+  window.addEventListener("load", () => {
+    navigator.serviceWorker.register("sw.js").catch(() => {});
+  });
+}
+let deferredPrompt = null;
+const installBanner = document.getElementById("installBanner");
+const installBtn = document.getElementById("installBtn");
+window.addEventListener("beforeinstallprompt", (e) => {
+  e.preventDefault();
+  deferredPrompt = e;
+  installBanner.classList.add("show");
+});
+installBtn.addEventListener("click", async () => {
+  if (!deferredPrompt) return;
+  deferredPrompt.prompt();
+  await deferredPrompt.userChoice;
+  deferredPrompt = null;
+  installBanner.classList.remove("show");
+});
+window.addEventListener("appinstalled", () => installBanner.classList.remove("show"));
+
+/* ---------- Tabs ---------- */
+document.querySelectorAll(".tab").forEach((btn) => {
+  btn.addEventListener("click", () => {
+    document.querySelectorAll(".tab").forEach((b) => b.classList.remove("active"));
+    document.querySelectorAll(".view").forEach((v) => v.classList.remove("active"));
+    btn.classList.add("active");
+    document.getElementById("view-" + btn.dataset.view).classList.add("active");
+  });
+});
+
+/* ---------- Shared audio context ---------- */
+let ctx = null;
+function getCtx() {
+  if (!ctx) ctx = new (window.AudioContext || window.webkitAudioContext)({ latencyHint: "interactive" });
+  if (ctx.state === "suspended") ctx.resume();
+  return ctx;
+}
+
+/* ---------- MIC ---------- */
+(() => {
+  let stream = null, source = null, gainNode = null, analyser = null;
+  let live = false, rafId = null, wakeLock = null, clipTimer = null;
+  const $ = (id) => document.getElementById(id);
+  const talkBtn = $("talkBtn"), talkLabel = $("talkLabel"), talkSub = $("talkSub");
+  const statusEl = $("status"), meterFill = $("meterFill"), clipEl = $("clip");
+  const gainSlider = $("gain"), gainVal = $("gainVal");
+  const ecBtn = $("ecBtn"), nsBtn = $("nsBtn");
+  const opts = { ec: false, ns: false };
+
+  window.__micGainNode = () => gainNode;
+  window.__micIsLive = () => live;
+  window.__micTargetGain = () => parseFloat(gainSlider.value);
+
+  function setStatus(txt, cls) {
+    statusEl.textContent = txt;
+    statusEl.className = "status" + (cls ? " " + cls : "");
+  }
+
+  async function start() {
+    const c = getCtx();
+    try {
+      stream = await navigator.mediaDevices.getUserMedia({
+        audio: {
+          echoCancellation: opts.ec,
+          noiseSuppression: opts.ns,
+          autoGainControl: false,
+          channelCount: 1
+        },
+        video: false
+      });
+    } catch (e) {
+      setStatus("mic denied", "err");
+      talkSub.textContent = "allow mic access, retry";
+      return;
+    }
+    source = c.createMediaStreamSource(stream);
+    gainNode = c.createGain();
+    gainNode.gain.value = parseFloat(gainSlider.value);
+    analyser = c.createAnalyser();
+    analyser.fftSize = 1024;
+    source.connect(gainNode);
+    gainNode.connect(analyser);
+    gainNode.connect(c.destination);
+
+    live = true;
+    talkBtn.classList.add("live");
+    talkLabel.textContent = "LIVE";
+    talkSub.textContent = "tap to mute";
+    setStatus("on air", "live");
+    meterLoop();
+    try { if ("wakeLock" in navigator) wakeLock = await navigator.wakeLock.request("screen"); } catch (_) {}
+  }
+
+  function stop() {
+    live = false;
+    if (rafId) cancelAnimationFrame(rafId);
+    meterFill.style.transform = "scaleX(0)";
+    if (stream) stream.getTracks().forEach((t) => t.stop());
+    if (source) source.disconnect();
+    if (gainNode) gainNode.disconnect();
+    if (analyser) analyser.disconnect();
+    if (wakeLock) { wakeLock.release().catch(() => {}); wakeLock = null; }
+    stream = source = gainNode = analyser = null;
+    talkBtn.classList.remove("live");
+    talkLabel.textContent = "GO LIVE";
+    talkSub.textContent = "tap to open mic";
+    setStatus("standby");
+  }
+
+  function meterLoop() {
+    if (!live || !analyser) return;
+    const buf = new Float32Array(analyser.fftSize);
+    analyser.getFloatTimeDomainData(buf);
+    let peak = 0;
+    for (let i = 0; i < buf.length; i++) { const v = Math.abs(buf[i]); if (v > peak) peak = v; }
+    meterFill.style.transform = "scaleX(" + Math.min(peak * 1.4, 1) + ")";
+    if (peak >= 0.99) {
+      clipEl.classList.add("on");
+      clearTimeout(clipTimer);
+      clipTimer = setTimeout(() => clipEl.classList.remove("on"), 900);
+    }
+    rafId = requestAnimationFrame(meterLoop);
+  }
+
+  talkBtn.addEventListener("click", () => (live ? stop() : start()));
+  gainSlider.addEventListener("input", () => {
+    const v = parseFloat(gainSlider.value);
+    gainVal.textContent = v.toFixed(2) + "×";
+    if (gainNode) gainNode.gain.setTargetAtTime(v, ctx.currentTime, 0.02);
+  });
+  function bindToggle(btn, key) {
+    btn.addEventListener("click", async () => {
+      opts[key] = !opts[key];
+      btn.textContent = opts[key] ? "on" : "off";
+      btn.classList.toggle("on", opts[key]);
+      if (live) { stop(); await start(); }
+    });
+  }
+  bindToggle(ecBtn, "ec");
+  bindToggle(nsBtn, "ns");
+  document.addEventListener("visibilitychange", async () => {
+    if (document.visibilityState === "visible" && live && !wakeLock && "wakeLock" in navigator) {
+      try { wakeLock = await navigator.wakeLock.request("screen"); } catch (_) {}
+    }
+  });
+})();
+
+/* ---------- SOUNDBOARD ----------
+   Ten CC0 clips from Freesound ship with the app; any pad can be swapped for
+   something else via the in-app search, and swaps live in IndexedDB so they
+   survive a reload and work offline. */
+(() => {
+  const grid = document.getElementById("boardGrid");
+  const fxVolSlider = document.getElementById("fxVol");
+  const fxVolVal = document.getElementById("fxVolVal");
+  const duckBtn = document.getElementById("duckBtn");
+  const stopAllBtn = document.getElementById("stopAll");
+  let duckOn = true;
+  let fxVolume = 1;
+  let voices = [];          // one entry per sound currently playing
+  let currentVoice = null;  // the voice being built by the running trigger
+
+  const PADS = [
+    { key: "alarm",    icon: "\u{1F6A8}", name: "Alarm",       title: "Alarm No.3",                    by: "Vendarro",              id: 345815 },
+    { key: "laugh",    icon: "\u{1F602}", name: "Laugh",       title: "Crowd laugh",                   by: "deleted_user_2104797",  id: 324894 },
+    { key: "airhorn",  icon: "\u{1F4EF}", name: "Air Horn",    title: "Airhorn",                       by: "jacksonacademyashmore", id: 414208 },
+    { key: "applause", icon: "\u{1F44F}", name: "Applause",    title: "Clapping",                      by: "Camo1018",              id: 425663 },
+    { key: "drumroll", icon: "\u{1F941}", name: "Drum Roll",   title: "buzz roll",                     by: "bigjoedrummer",         id: 77305  },
+    { key: "ding",     icon: "\u{1F514}", name: "Ding",        title: "bell ding 1",                   by: "5ro4",                  id: 611113 },
+    { key: "boing",    icon: "\u{1FAE8}", name: "Boing",       title: "Boing 2",                       by: "magnuswaker",           id: 540790 },
+    { key: "buzzer",   icon: "❌",    name: "Buzzer",      title: "buzzer",                        by: "guitarguy1985",         id: 54047  },
+    { key: "cheer",    icon: "\u{1F4E3}", name: "Crowd Cheer", title: "cheering and clapping crowd 2", by: "AlaskaRobotics",        id: 221567 },
+    { key: "scratch",  icon: "\u{1F4BF}", name: "Scratch",     title: "record_scratch",                by: "simkiott",              id: 43404  }
+  ];
+  const DEF = {};
+  PADS.forEach((p) => { DEF[p.key] = p; });
+
+  fxVolSlider.addEventListener("input", () => {
+    fxVolume = parseFloat(fxVolSlider.value);
+    fxVolVal.textContent = Math.round(fxVolume * 100) + "%";
+    if (ctx) voices.forEach((v) => v.gain.gain.setTargetAtTime(fxVolume * v.trim, ctx.currentTime, 0.02));
+  });
+  duckBtn.addEventListener("click", () => {
+    duckOn = !duckOn;
+    duckBtn.textContent = duckOn ? "on" : "off";
+    duckBtn.classList.toggle("on", duckOn);
+  });
+
+  /* ---------- mic ducking ---------- */
+
+  function micGain() {
+    const mg = window.__micGainNode && window.__micGainNode();
+    return mg && window.__micIsLive() ? mg : null;
+  }
+
+  // Restore to the slider value, never to gain.value -- reading the live node
+  // during an existing duck would latch the mic at the ducked level.
+  function duck(ms) {
+    if (!duckOn) return;
+    const mg = micGain();
+    if (!mg) return;
+    const c = getCtx();
+    const target = window.__micTargetGain();
+    mg.gain.cancelScheduledValues(c.currentTime);
+    mg.gain.setTargetAtTime(target * 0.15, c.currentTime, 0.02);
+    mg.gain.setTargetAtTime(target, c.currentTime + ms / 1000, 0.08);
+  }
+
+  function unduck() {
+    const mg = micGain();
+    if (!mg) return;
+    const c = getCtx();
+    mg.gain.cancelScheduledValues(c.currentTime);
+    mg.gain.setTargetAtTime(window.__micTargetGain(), c.currentTime, 0.03);
+  }
+
+  /* ---------- output bus ---------- */
+
+  let bus = null;
+  function getBus(c) {
+    if (bus && bus.ctx === c) return bus;
+    const limiter = c.createDynamicsCompressor();
+    limiter.threshold.value = -7;
+    limiter.knee.value = 8;
+    limiter.ratio.value = 14;
+    limiter.attack.value = 0.003;
+    limiter.release.value = 0.18;
+    limiter.connect(c.destination);
+    bus = { ctx: c, dry: limiter };
+    return bus;
+  }
+
+  /* ---------- voices ---------- */
+
+  function master(c, ms, trim) {
+    const g = c.createGain();
+    g.gain.value = fxVolume * trim;
+    g.connect(getBus(c).dry);
+    const voice = { gain: g, nodes: [g], done: false, trim: trim };
+    voice.timer = setTimeout(() => killVoice(voice), ms + 400);
+    voices.push(voice);
+    currentVoice = voice;
+    duck(ms);
+    return g;
+  }
+
+  function track(node) { if (currentVoice) currentVoice.nodes.push(node); return node; }
+
+  function killVoice(voice) {
+    if (voice.done) return;
+    voice.done = true;
+    clearTimeout(voice.timer);
+    voice.nodes.forEach((n) => {
+      try { if (n.stop) n.stop(); } catch (_) {}
+      try { n.disconnect(); } catch (_) {}
+    });
+    voices = voices.filter((v) => v !== voice);
+    if (currentVoice === voice) currentVoice = null;
+  }
+
+  /* ---------- loudness ----------
+     Recordings from different uploaders arrive at wildly different levels, so
+     every clip is measured on load and given a gain instead of being re-encoded.
+     This also covers clips loaded later through search. The 90th-percentile of
+     50ms block RMS is used rather than plain RMS, so a clip with a long quiet
+     tail isn't boosted to make its silence loud. */
+
+  // CEILING is deliberately above full scale: peaky material (a drum roll, a
+  // clap) is already mastered to 1.0, so clamping gain to keep peaks under 1.0
+  // leaves it far below the loudness target. The bus limiter is what catches
+  // the peaks; this just stops a pathological clip from slamming it.
+  const TARGET = 0.14, CEILING = 1.8;
+
+  function loudness(buf) {
+    const d = buf.getChannelData(0);
+    const block = Math.max(1, Math.floor(buf.sampleRate * 0.05));
+    const vals = [];
+    for (let i = 0; i + block <= d.length; i += block) {
+      let sum = 0;
+      for (let k = 0; k < block; k++) { const v = d[i + k]; sum += v * v; }
+      vals.push(Math.sqrt(sum / block));
+    }
+    if (!vals.length) return 0;
+    vals.sort((a, b) => a - b);
+    return vals[Math.floor(vals.length * 0.9)];
+  }
+
+  function peakOf(buf) {
+    let peak = 0;
+    for (let ch = 0; ch < buf.numberOfChannels; ch++) {
+      const d = buf.getChannelData(ch);
+      for (let i = 0; i < d.length; i++) { const v = Math.abs(d[i]); if (v > peak) peak = v; }
+    }
+    return peak;
+  }
+
+  function normGain(buf) {
+    const l = loudness(buf);
+    if (!l) return 1;
+    return Math.min(TARGET / l, CEILING / (peakOf(buf) || 1), 8);
+  }
+
+  /* ---------- stored pad overrides ---------- */
+
+  function idb() {
+    return new Promise((res, rej) => {
+      const r = indexedDB.open("magnum-pa", 1);
+      r.onupgradeneeded = () => r.result.createObjectStore("pads");
+      r.onsuccess = () => res(r.result);
+      r.onerror = () => rej(r.error);
+    });
+  }
+  function tx(store, mode, fn) {
+    return idb().then((db) => new Promise((res, rej) => {
+      const t = db.transaction(store, mode);
+      const req = fn(t.objectStore(store));
+      req.onsuccess = () => res(req.result);
+      req.onerror = () => rej(req.error);
+    })).catch(() => null);
+  }
+  const idbGet = (k) => tx("pads", "readonly", (s) => s.get(k));
+  const idbSet = (k, v) => tx("pads", "readwrite", (s) => s.put(v, k));
+  const idbDel = (k) => tx("pads", "readwrite", (s) => s.delete(k));
+  const idbKeys = () => tx("pads", "readonly", (s) => s.getAllKeys());
+
+  /* ---------- pads ---------- */
+
+  const pads = {};     // key -> { buffer, gain, label, custom }
+  const loading = {};
+
+  function ensurePad(key) {
+    if (pads[key]) return Promise.resolve(pads[key]);
+    if (loading[key]) return loading[key];
+    const c = getCtx();
+    loading[key] = idbGet(key).then((custom) => {
+      if (custom && custom.bytes) return { bytes: custom.bytes, label: custom, custom: true };
+      return fetch("sounds/" + key + ".mp3")
+        .then((r) => { if (!r.ok) throw new Error("missing " + key); return r.arrayBuffer(); })
+        .then((bytes) => ({ bytes: bytes, label: DEF[key], custom: false }));
+    }).then((got) => new Promise((res, rej) => {
+      // decodeAudioData detaches the buffer, so decode a copy and keep the source
+      c.decodeAudioData(got.bytes.slice(0), (buffer) => {
+        pads[key] = { buffer: buffer, gain: normGain(buffer), label: got.label, custom: got.custom };
+        paintPad(key);
+        res(pads[key]);
+      }, rej);
+    })).catch((e) => { delete loading[key]; throw e; });
+    return loading[key];
+  }
+
+  function playPad(key) {
+    const p = pads[key];
+    if (!p) { ensurePad(key).then(() => playPad(key)).catch(() => {}); return; }
+    const c = getCtx();
+    const out = master(c, Math.min(p.buffer.duration * 1000, 10000), p.gain);
+    const s = track(c.createBufferSource());
+    s.buffer = p.buffer;
+    s.connect(out);
+    s.start();
+  }
+
+  /* ---------- board UI ---------- */
+
+  const buttons = {};
+  PADS.forEach((pad) => {
+    const btn = document.createElement("button");
+    btn.className = "fx-btn loading";
+    btn.innerHTML = '<span class="fx-icon">' + pad.icon + '</span><span class="fx-name"></span>';
+    btn.querySelector(".fx-name").textContent = pad.name;
+    btn.addEventListener("click", () => {
+      playPad(pad.key);
+      btn.classList.add("playing");
+      setTimeout(() => btn.classList.remove("playing"), 250);
+    });
+    buttons[pad.key] = btn;
+    grid.appendChild(btn);
+  });
+
+  function paintPad(key) {
+    const btn = buttons[key], p = pads[key];
+    if (!btn) return;
+    btn.classList.toggle("loading", !p);
+    btn.classList.toggle("custom", !!(p && p.custom));
+    const label = p && p.custom ? (p.label.name || DEF[key].name) : DEF[key].name;
+    btn.querySelector(".fx-name").textContent = label.length > 18 ? label.slice(0, 17) + "…" : label;
+  }
+
+  // Decode everything when the board is opened, one clip per idle slot, so the
+  // first tap of a pad never waits on a fetch or a decode.
+  let warmed = false;
+  function warmUp() {
+    if (warmed) return;
+    warmed = true;
+    const queue = PADS.map((p) => p.key);
+    const idle = window.requestIdleCallback
+      ? (fn) => window.requestIdleCallback(fn, { timeout: 500 })
+      : (fn) => setTimeout(fn, 16);
+    (function next() {
+      const key = queue.shift();
+      if (!key) return;
+      ensurePad(key).catch(() => {}).then(() => idle(next));
+    })();
+  }
+  document.querySelector(".tab.board-tab").addEventListener("click", warmUp);
+
+  stopAllBtn.addEventListener("click", () => {
+    voices.slice().forEach(killVoice);
+    unduck();
+  });
+
+  /* ---------- find sounds (Freesound API) ---------- */
+
+  const sheet = document.getElementById("searchSheet");
+  const keySetup = document.getElementById("keySetup");
+  const searchMain = document.getElementById("searchMain");
+  const keyInput = document.getElementById("keyInput");
+  const searchQ = document.getElementById("searchQ");
+  const cc0Only = document.getElementById("cc0Only");
+  const statusEl = document.getElementById("searchStatus");
+  const resultsEl = document.getElementById("searchResults");
+  const customEl = document.getElementById("customList");
+  const TOKEN_KEY = "magnum-pa-fs-token";
+
+  function token() { try { return localStorage.getItem(TOKEN_KEY) || ""; } catch (_) { return ""; } }
+  function setToken(v) {
+    try { v ? localStorage.setItem(TOKEN_KEY, v) : localStorage.removeItem(TOKEN_KEY); } catch (_) {}
+    syncSheet();
+  }
+  function syncSheet() {
+    const has = !!token();
+    keySetup.hidden = has;
+    searchMain.hidden = !has;
+  }
+
+  function openSheet() {
+    sheet.hidden = false;
+    syncSheet();
+    renderCustom();
+  }
+  function closeSheet() { sheet.hidden = true; }
+  document.getElementById("findBtn").addEventListener("click", openSheet);
+  document.getElementById("sheetClose").addEventListener("click", closeSheet);
+  document.addEventListener("keydown", (e) => { if (e.key === "Escape" && !sheet.hidden) closeSheet(); });
+  document.getElementById("keySave").addEventListener("click", () => {
+    const v = keyInput.value.trim();
+    if (v) { setToken(v); keyInput.value = ""; }
+  });
+  document.getElementById("forgetKey").addEventListener("click", () => {
+    setToken("");
+    resultsEl.innerHTML = "";
+    statusEl.textContent = "";
+  });
+
+  // The key goes in the Authorization header, never the URL, so it stays out of
+  // referrers, proxy logs and browser history.
+  function fsSearch(q) {
+    const params = new URLSearchParams({
+      query: q,
+      fields: "id,name,username,duration,license,previews",
+      page_size: "20",
+      sort: "downloads_desc"
+    });
+    if (cc0Only.checked) params.set("filter", 'license:"Creative Commons 0"');
+    return fetch("https://freesound.org/apiv2/search/text/?" + params.toString(), {
+      headers: { Authorization: "Token " + token() }
+    }).then((r) => {
+      if (r.status === 401 || r.status === 403) throw new Error("API key rejected — check it and save again");
+      if (r.status === 429) throw new Error("rate limited by Freesound, wait a moment");
+      if (!r.ok) throw new Error("search failed (" + r.status + ")");
+      return r.json();
+    }).then((j) => j.results || []);
+  }
+
+  function previewUrl(r) {
+    const p = r.previews || {};
+    return p["preview-hq-mp3"] || p["preview-lq-mp3"] || "";
+  }
+
+  const fetched = {};   // sound id -> ArrayBuffer, so preview and assign share one download
+  function bytesFor(r) {
+    if (fetched[r.id]) return Promise.resolve(fetched[r.id]);
+    const url = previewUrl(r);
+    if (!url) return Promise.reject(new Error("no preview available"));
+    return fetch(url).then((res) => {
+      if (!res.ok) throw new Error("preview download failed");
+      return res.arrayBuffer();
+    }).then((b) => { fetched[r.id] = b; return b; });
+  }
+
+  function previewSound(r, btn) {
+    const c = getCtx();
+    btn.textContent = "…";
+    bytesFor(r).then((bytes) => new Promise((res, rej) => {
+      c.decodeAudioData(bytes.slice(0), res, rej);
+    })).then((buf) => {
+      const out = master(c, Math.min(buf.duration * 1000, 10000), normGain(buf));
+      const s = track(c.createBufferSource());
+      s.buffer = buf;
+      s.connect(out);
+      s.start();
+      btn.textContent = "▶ Play";
+    }).catch(() => { btn.textContent = "failed"; });
+  }
+
+  function assign(r, key, btn) {
+    btn.textContent = "saving…";
+    bytesFor(r).then((bytes) =>
+      idbSet(key, {
+        bytes: bytes,
+        name: r.name,
+        by: r.username,
+        license: r.license || "",
+        url: "https://freesound.org/s/" + r.id + "/"
+      })
+    ).then(() => {
+      delete pads[key];
+      delete loading[key];
+      return ensurePad(key);
+    }).then(() => {
+      statusEl.textContent = "✓ " + r.name + " → " + DEF[key].name;
+      renderCustom();
+      btn.textContent = "saved";
+    }).catch(() => { btn.textContent = "failed"; });
+  }
+
+  function renderResults(list) {
+    resultsEl.innerHTML = "";
+    if (!list.length) { statusEl.textContent = "no matches — try another word"; return; }
+    list.forEach((r) => {
+      const row = document.createElement("div");
+      row.className = "result";
+
+      const top = document.createElement("div");
+      top.className = "result-top";
+      const nm = document.createElement("div");
+      nm.className = "result-name";
+      nm.textContent = r.name;
+      const meta = document.createElement("div");
+      meta.className = "result-meta";
+      meta.textContent = r.duration.toFixed(1) + "s · " + r.username;
+      top.appendChild(nm); top.appendChild(meta);
+
+      const acts = document.createElement("div");
+      acts.className = "result-actions";
+      const play = document.createElement("button");
+      play.className = "primary";
+      play.textContent = "▶ Play";
+      play.addEventListener("click", () => previewSound(r, play));
+      const use = document.createElement("button");
+      use.textContent = "Use for…";
+      acts.appendChild(play); acts.appendChild(use);
+
+      const pick = document.createElement("div");
+      pick.className = "pad-pick";
+      pick.hidden = true;
+      PADS.forEach((pad) => {
+        const b = document.createElement("button");
+        b.textContent = pad.name;
+        b.addEventListener("click", () => assign(r, pad.key, b));
+        pick.appendChild(b);
+      });
+      use.addEventListener("click", () => { pick.hidden = !pick.hidden; });
+
+      row.appendChild(top);
+      if (!cc0Only.checked && r.license && r.license.indexOf("publicdomain") === -1) {
+        const lic = document.createElement("div");
+        lic.className = "result-meta";
+        lic.textContent = "⚠ " + r.license + " — attribution required";
+        row.appendChild(lic);
+      }
+      row.appendChild(acts);
+      row.appendChild(pick);
+      resultsEl.appendChild(row);
+    });
+    statusEl.textContent = list.length + " results, most downloaded first";
+  }
+
+  function runSearch() {
+    const q = searchQ.value.trim();
+    if (!q) return;
+    statusEl.textContent = "searching…";
+    resultsEl.innerHTML = "";
+    fsSearch(q).then(renderResults).catch((e) => { statusEl.textContent = e.message; });
+  }
+  document.getElementById("searchGo").addEventListener("click", runSearch);
+  searchQ.addEventListener("keydown", (e) => { if (e.key === "Enter") runSearch(); });
+
+  function renderCustom() {
+    customEl.innerHTML = "";
+    idbKeys().then((keys) => {
+      if (!keys || !keys.length) return;
+      const head = document.createElement("div");
+      head.className = "sheet-note";
+      head.textContent = "Swapped pads";
+      customEl.appendChild(head);
+      keys.forEach((key) => {
+        idbGet(key).then((rec) => {
+          if (!rec) return;
+          const row = document.createElement("div");
+          row.className = "result";
+          const top = document.createElement("div");
+          top.className = "result-top";
+          const nm = document.createElement("div");
+          nm.className = "result-name";
+          nm.textContent = DEF[key].name + " → " + rec.name;
+          const meta = document.createElement("div");
+          meta.className = "result-meta";
+          meta.textContent = rec.by;
+          top.appendChild(nm); top.appendChild(meta);
+          const acts = document.createElement("div");
+          acts.className = "result-actions";
+          const reset = document.createElement("button");
+          reset.textContent = "Restore default";
+          reset.addEventListener("click", () => {
+            idbDel(key).then(() => {
+              delete pads[key];
+              delete loading[key];
+              paintPad(key);
+              return ensurePad(key);
+            }).then(renderCustom);
+          });
+          acts.appendChild(reset);
+          row.appendChild(top); row.appendChild(acts);
+          customEl.appendChild(row);
+        });
+      });
+    });
+  }
+})();
+</script>
+</body>
+</html>
