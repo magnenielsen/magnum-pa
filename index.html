@@ -243,15 +243,6 @@
     cursor: pointer;
   }
 
-  .warn-note {
-    font-size: 0.6rem;
-    line-height: 1.55;
-    color: var(--warn);
-    border-left: 2px solid var(--warn);
-    padding: 4px 0 4px 10px;
-  }
-  .warn-note[hidden] { display: none; }
-
   .board-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
   .find-btn {
     all: unset;
@@ -396,15 +387,6 @@
         <span class="val" id="gainVal">1.00×</span>
       </div>
       <div class="row">
-        <span class="lbl">Echo cancel</span>
-        <button class="toggle" id="ecBtn">off</button>
-      </div>
-      <div class="warn-note" id="ecWarn" hidden>
-        Echo cancellation silences the passthrough. It exists to remove whatever
-        the speaker is playing from the mic signal — but here the speaker is
-        playing the mic signal, so it cancels you out. Leave it off.
-      </div>
-      <div class="row">
         <span class="lbl">Noise suppress</span>
         <button class="toggle" id="nsBtn">off</button>
       </div>
@@ -413,8 +395,8 @@
     <div class="panel">
       <div class="note">
         <b>Setup:</b> pair the phone to the speaker first, then go live.
-        Toggling echo/noise restarts the mic. Expect ~150–300&nbsp;ms Bluetooth delay.
-        <b>Leave echo cancel off</b> — it cancels the PA signal against itself.
+        Toggling noise suppression restarts the mic. Expect ~150–300&nbsp;ms Bluetooth delay.
+        Echo cancellation is always on — without it the speaker stays silent.
         Keep the phone away from the speaker to avoid feedback.
         <b>iOS</b> may drop the speaker to call-quality audio while the mic is open.
       </div>
@@ -543,8 +525,8 @@ function getCtx() {
   const talkBtn = $("talkBtn"), talkLabel = $("talkLabel"), talkSub = $("talkSub");
   const statusEl = $("status"), meterFill = $("meterFill"), clipEl = $("clip");
   const gainSlider = $("gain"), gainVal = $("gainVal");
-  const ecBtn = $("ecBtn"), nsBtn = $("nsBtn"), ecWarn = $("ecWarn");
-  const opts = { ec: false, ns: false };
+  const nsBtn = $("nsBtn");
+  const opts = { ns: false };
 
   window.__micGainNode = () => gainNode;
   window.__micIsLive = () => live;
@@ -560,7 +542,15 @@ function getCtx() {
     try {
       stream = await navigator.mediaDevices.getUserMedia({
         audio: {
-          echoCancellation: opts.ec,
+          // Always true, and deliberately not a setting. The textbook argument
+          // says an echo canceller should cancel a passthrough against itself,
+          // since its reference for what to subtract is our own output. On the
+          // device this was tested on it is the opposite: the passthrough is
+          // silent without it. Asking for echo cancellation is what puts iOS
+          // into voice-processing mode, and that is what routes capture and
+          // playback to the Bluetooth device at all. The cost is that the
+          // speaker drops to HFP call quality -- mono and narrowband.
+          echoCancellation: true,
           noiseSuppression: opts.ns,
           autoGainControl: false,
           channelCount: 1
@@ -632,14 +622,9 @@ function getCtx() {
       opts[key] = !opts[key];
       btn.textContent = opts[key] ? "on" : "off";
       btn.classList.toggle("on", opts[key]);
-      // AEC's reference signal is our own output, which is the mic -- it adapts
-      // and cancels the passthrough to near silence. Say so instead of leaving
-      // the user to work out why going live produced nothing.
-      if (key === "ec") ecWarn.hidden = !opts.ec;
       if (live) { stop(); await start(); }
     });
   }
-  bindToggle(ecBtn, "ec");
   bindToggle(nsBtn, "ns");
   document.addEventListener("visibilitychange", async () => {
     if (document.visibilityState === "visible" && live && !wakeLock && "wakeLock" in navigator) {
