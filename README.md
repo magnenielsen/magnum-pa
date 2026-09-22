@@ -50,25 +50,32 @@ the search defaults to CC0 only, and warns you when you turn that filter off.
 
 ## Running it
 
-Any static file host with HTTPS works — the mic requires a secure origin. Two options:
+Live at **<https://magnenielsen.github.io/magnum-pa/>** — open it on the phone and
+"Add to Home Screen" (on iOS that is Safari's share sheet; Chrome on iOS cannot install
+PWAs). Pair the Bluetooth speaker before going live.
 
-**GitHub Pages (recommended, free)**
-```bash
-git init
-git add .
-git commit -m "Magnum PA"
-git branch -M main
-git remote add origin <your-repo-url>
-git push -u origin main
-# enable Pages in repo settings, root of main branch
-```
-Then open the Pages URL on the phone and "Add to Home Screen."
+The mic needs a secure origin, so HTTPS is not optional. `localhost` is the only exemption —
+serving the folder over plain HTTP on the LAN will load the page and play the soundboard,
+but `getUserMedia` and the service worker are both blocked, so no mic and no install.
 
-**Local test**
+**Deploying changes**
+
 ```bash
-python3 -m http.server 8443
+git add -A && git commit -m "..." && git push
 ```
-(getUserMedia works on `localhost` without HTTPS for local testing only — a real deploy needs HTTPS.)
+
+Pages redeploys in about a minute. The app shell is network-first, so a redeploy is picked
+up on the next online launch — but the sounds and icons are cache-first, so **bump `CACHE`
+in `sw.js` whenever you change a file under `sounds/`** or installed copies will keep the old
+one indefinitely.
+
+**Local development**
+
+```bash
+python3 -m http.server 8778 --directory .
+```
+
+Then open <http://localhost:8778> — `localhost` counts as a secure origin, so the mic works.
 
 ## Known limitations
 
