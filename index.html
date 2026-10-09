@@ -105,6 +105,7 @@
   .tab.active { color: var(--txt); background: var(--panel); }
   .tab.active.mic-tab { color: var(--accent); }
   .tab.active.board-tab { color: var(--blue); }
+  .tab.active.songs-tab { color: var(--ok); }
 
   .view { display: none; flex-direction: column; gap: 12px; }
   .view.active { display: flex; }
@@ -243,6 +244,21 @@
     cursor: pointer;
   }
 
+  .song-list { display: flex; flex-direction: column; gap: 8px; }
+  .song-btn {
+    all: unset;
+    display: flex; justify-content: space-between; align-items: center; gap: 12px;
+    background: var(--panel); border: 1px solid var(--line);
+    padding: 11px 13px; cursor: pointer;
+    transition: border-color 90ms, box-shadow 90ms;
+  }
+  .song-btn:active { border-color: var(--ok); }
+  .song-btn.playing { border-color: var(--ok); box-shadow: 0 0 0 3px rgba(67,209,122,0.13); }
+  .song-name { font-size: 0.7rem; letter-spacing: 0.04em; color: var(--txt); }
+  .song-by { font-size: 0.55rem; color: var(--dim); letter-spacing: 0.04em; }
+  .song-play { font-size: 0.8rem; color: var(--dim); }
+  .song-btn.playing .song-play { color: var(--ok); }
+
   .board-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
   .find-btn {
     all: unset;
@@ -364,6 +380,7 @@
   <div class="tabs">
     <button class="tab mic-tab active" data-view="mic">Mic</button>
     <button class="tab board-tab" data-view="board">Board</button>
+    <button class="tab songs-tab" data-view="songs">Songs</button>
   </div>
 
   <!-- MIC VIEW -->
@@ -430,6 +447,42 @@
         Use <b>Find Sounds</b> to search Freesound and swap any pad — your picks are stored
         on the phone and work offline. Effects mix into the same output as the mic, so they
         play through the paired speaker too.
+      </div>
+    </div>
+  </div>
+
+  <div class="view" id="view-songs">
+    <div class="panel" style="padding:12px;">
+      <div class="row">
+        <span class="lbl">Song volume</span>
+        <input type="range" id="songVol" min="0" max="1.3" step="0.05" value="0.8">
+        <span class="val" id="songVolVal">80%</span>
+      </div>
+      <div class="row">
+        <span class="lbl">Tempo</span>
+        <input type="range" id="songTempo" min="0.6" max="1.5" step="0.05" value="1">
+        <span class="val" id="songTempoVal">100%</span>
+      </div>
+      <div class="row">
+        <span class="lbl">Drums</span>
+        <button class="toggle on" id="drumBtn">on</button>
+      </div>
+      <div class="row">
+        <span class="lbl">Loop</span>
+        <button class="toggle" id="loopBtn">off</button>
+      </div>
+    </div>
+
+    <div class="song-list" id="songList"></div>
+
+    <button class="stop-all" id="songStop">■ STOP</button>
+
+    <div class="panel">
+      <div class="note">
+        Demo tunes in the style keyboards and toys shipped with — square-wave lead,
+        auto-accompaniment, drum machine. All synthesized on the phone and all
+        public domain, so there is nothing to download and nothing to license.
+        Tempo applies when you release the slider.
       </div>
     </div>
   </div>
@@ -1114,6 +1167,459 @@ function getCtx() {
       });
     });
   }
+})();
+/* ---------- SONGS ----------
+   The demo tunes that shipped on cheap keyboards: a square-wave lead over an
+   auto-accompaniment and a drum machine. Synthesized rather than recorded,
+   which is both the authentic sound and the reason there is nothing to license
+   -- every tune here is public domain. */
+(() => {
+  const list = document.getElementById("songList");
+  const volSlider = document.getElementById("songVol");
+  const volVal = document.getElementById("songVolVal");
+  const tempoSlider = document.getElementById("songTempo");
+  const tempoVal = document.getElementById("songTempoVal");
+  const drumBtn = document.getElementById("drumBtn");
+  const loopBtn = document.getElementById("loopBtn");
+  const stopBtn = document.getElementById("songStop");
+
+  let volume = 0.8, tempoScale = 1, drumsOn = true, loopOn = false;
+
+  /* ---------- notation ---------- */
+
+  const NOTE = { c: 0, "c#": 1, d: 2, "d#": 3, e: 4, f: 5, "f#": 6, g: 7, "g#": 8, a: 9, "a#": 10, b: 11 };
+
+  function freq(name) {
+    const m = /^([a-g]#?)(-?\d)$/.exec(name);
+    if (!m) return 0;
+    const midi = NOTE[m[1]] + (parseInt(m[2], 10) + 1) * 12;
+    return 440 * Math.pow(2, (midi - 69) / 12);
+  }
+
+  // "e5/16" sixteenth note, "c5/4." dotted quarter, "r/8" rest,
+  // "am:1.5" an explicit length in quarter-note beats (used by chord tracks).
+  function parseSeq(str) {
+    return str.trim().split(/\s+/).map((tok) => {
+      if (tok.indexOf(":") > -1) {
+        const p = tok.split(":");
+        return { note: p[0], beats: parseFloat(p[1]) };
+      }
+      const p = tok.split("/");
+      let d = p[1] || "4", dotted = false;
+      if (d.slice(-1) === ".") { dotted = true; d = d.slice(0, -1); }
+      let beats = 4 / parseInt(d, 10);
+      if (dotted) beats *= 1.5;
+      return { note: p[0], beats: beats };
+    });
+  }
+
+  const CHORD = { "": [0, 4, 7], m: [0, 3, 7], 7: [0, 4, 7, 10], m7: [0, 3, 7, 10], dim: [0, 3, 6] };
+
+  function chordFreqs(name, octave) {
+    const m = /^([a-g]#?)(m7|dim|m|7)?$/.exec(name);
+    if (!m) return [];
+    const root = NOTE[m[1]] + (octave + 1) * 12;
+    return CHORD[m[2] || ""].map((i) => 440 * Math.pow(2, (root + i - 69) / 12));
+  }
+
+  function chordAt(chords, t) {
+    let acc = 0;
+    for (let i = 0; i < chords.length; i++) {
+      if (t < acc + chords[i].beats - 1e-6) return chords[i].note;
+      acc += chords[i].beats;
+    }
+    return chords[chords.length - 1].note;
+  }
+
+  /* ---------- voices ---------- */
+
+  let noiseBuf = null;
+  function noise(c) {
+    if (!noiseBuf || noiseBuf.sampleRate !== c.sampleRate) {
+      const n = Math.floor(c.sampleRate * 2);
+      noiseBuf = c.createBuffer(1, n, c.sampleRate);
+      const d = noiseBuf.getChannelData(0);
+      for (let i = 0; i < n; i++) d[i] = Math.random() * 2 - 1;
+    }
+    return noiseBuf;
+  }
+
+  function noiseSrc(c) {
+    const s = c.createBufferSource();
+    s.buffer = noise(c);
+    s.loop = true;
+    return s;
+  }
+
+  // Square lead with a touch of delayed vibrato -- the vibrato is what makes a
+  // cheap keyboard sound like a cheap keyboard rather than a bare oscillator.
+  function lead(c, out, f, t, dur) {
+    const o = c.createOscillator();
+    o.type = "square";
+    o.frequency.value = f;
+    const vib = c.createOscillator();
+    vib.frequency.value = 5.5;
+    const vg = c.createGain();
+    vg.gain.setValueAtTime(0, t);
+    vg.gain.linearRampToValueAtTime(f * 0.007, t + Math.min(dur * 0.8, 0.3));
+    vib.connect(vg); vg.connect(o.frequency);
+
+    const lp = c.createBiquadFilter();
+    lp.type = "lowpass"; lp.frequency.value = 3200; lp.Q.value = 0.7;
+    const g = c.createGain();
+    const end = t + dur;
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.linearRampToValueAtTime(0.3, t + 0.008);
+    g.gain.linearRampToValueAtTime(0.2, t + Math.min(dur * 0.5, 0.12));
+    g.gain.setValueAtTime(0.2, Math.max(t + 0.02, end - 0.05));
+    g.gain.exponentialRampToValueAtTime(0.0001, end);
+    o.connect(lp); lp.connect(g); g.connect(out);
+    o.start(t); o.stop(end + 0.02);
+    vib.start(t); vib.stop(end + 0.02);
+  }
+
+  function bass(c, out, f, t, dur) {
+    const o = c.createOscillator();
+    o.type = "square";
+    o.frequency.value = f;
+    const lp = c.createBiquadFilter();
+    lp.type = "lowpass"; lp.frequency.value = 700;
+    const g = c.createGain();
+    const end = t + Math.min(dur, 0.45);
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.linearRampToValueAtTime(0.34, t + 0.01);
+    g.gain.exponentialRampToValueAtTime(0.0001, end);
+    o.connect(lp); lp.connect(g); g.connect(out);
+    o.start(t); o.stop(end + 0.02);
+  }
+
+  function stab(c, out, freqs, t, dur, level) {
+    const g = c.createGain();
+    const end = t + Math.min(dur, 0.3);
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.linearRampToValueAtTime(level, t + 0.008);
+    g.gain.exponentialRampToValueAtTime(0.0001, end);
+    const lp = c.createBiquadFilter();
+    lp.type = "lowpass"; lp.frequency.value = 2200;
+    g.connect(lp); lp.connect(out);
+    freqs.forEach((f) => {
+      const o = c.createOscillator();
+      o.type = "square";
+      o.frequency.value = f;
+      o.connect(g);
+      o.start(t); o.stop(end + 0.02);
+    });
+  }
+
+  function kick(c, out, t) {
+    const o = c.createOscillator();
+    o.type = "sine";
+    o.frequency.setValueAtTime(160, t);
+    o.frequency.exponentialRampToValueAtTime(45, t + 0.11);
+    const g = c.createGain();
+    g.gain.setValueAtTime(0.7, t);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + 0.16);
+    o.connect(g); g.connect(out);
+    o.start(t); o.stop(t + 0.18);
+  }
+
+  function snare(c, out, t) {
+    const n = noiseSrc(c);
+    const hp = c.createBiquadFilter();
+    hp.type = "highpass"; hp.frequency.value = 1400;
+    const ng = c.createGain();
+    ng.gain.setValueAtTime(0.3, t);
+    ng.gain.exponentialRampToValueAtTime(0.0001, t + 0.13);
+    n.connect(hp); hp.connect(ng); ng.connect(out);
+    n.start(t, Math.random()); n.stop(t + 0.15);
+
+    const o = c.createOscillator();
+    o.type = "triangle";
+    o.frequency.value = 190;
+    const og = c.createGain();
+    og.gain.setValueAtTime(0.22, t);
+    og.gain.exponentialRampToValueAtTime(0.0001, t + 0.09);
+    o.connect(og); og.connect(out);
+    o.start(t); o.stop(t + 0.1);
+  }
+
+  function hat(c, out, t, open) {
+    const n = noiseSrc(c);
+    const hp = c.createBiquadFilter();
+    hp.type = "highpass"; hp.frequency.value = 7000;
+    const g = c.createGain();
+    const d = open ? 0.12 : 0.035;
+    g.gain.setValueAtTime(0.1, t);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + d);
+    n.connect(hp); hp.connect(g); g.connect(out);
+    n.start(t, Math.random()); n.stop(t + d + 0.02);
+  }
+
+  /* ---------- arrangement ---------- */
+
+  function build(song) {
+    const ev = [];
+    let t = 0;
+    parseSeq(song.melody).forEach((n) => {
+      if (n.note !== "r") ev.push({ t: t, kind: "lead", f: freq(n.note), dur: n.beats });
+      t += n.beats;
+    });
+    const total = t;
+    const chords = parseSeq(song.chords);
+    const bar = song.bar || 4;
+
+    if (song.style === "arp") {
+      // Left-hand arpeggio in eighths, cycling the chord tones upward.
+      let i = 0;
+      for (let b = 0; b < total; b += 0.5, i++) {
+        const f = chordFreqs(chordAt(chords, b), 3);
+        if (!f.length) continue;
+        ev.push({ t: b, kind: "bass", f: f[i % f.length] / (i % f.length === 0 ? 2 : 1), dur: 0.5 });
+      }
+    } else if (bar === 3) {
+      for (let b = 0; b < total; b += 3) {
+        const mid = chordFreqs(chordAt(chords, b), 3);
+        const low = chordFreqs(chordAt(chords, b), 2);
+        if (!low.length) continue;
+        ev.push({ t: b, kind: "bass", f: low[0], dur: 1 });
+        ev.push({ t: b + 1, kind: "stab", f: mid, dur: 0.8 });
+        ev.push({ t: b + 2, kind: "stab", f: mid, dur: 0.8 });
+      }
+    } else {
+      // Step the timeline in two-beat groups rather than per bar. Walking the
+      // bar and writing b+2 / b+3 assumes a four-beat bar, and doubles every
+      // bass note and drum hit on anything shorter.
+      let pair = 0;
+      for (let b = 0; b < total; b += 2, pair++) {
+        const name = chordAt(chords, b);
+        const low = chordFreqs(name, 2);
+        const mid = chordFreqs(name, 3);
+        if (!low.length) continue;
+        ev.push({ t: b, kind: "bass", f: pair % 2 ? (low[2] || low[0]) : low[0], dur: 1 });
+        ev.push({ t: b + 1, kind: "stab", f: mid, dur: 0.8 });
+      }
+    }
+
+    if (song.drums !== false) {
+      if (bar === 3) {
+        for (let b = 0; b < total; b += 3) {
+          ev.push({ t: b, kind: "kick" });
+          ev.push({ t: b + 1, kind: "hat" });
+          ev.push({ t: b + 2, kind: "hat" });
+        }
+      } else {
+        for (let b = 0; b < total; b += 2) {
+          ev.push({ t: b, kind: "kick" });
+          ev.push({ t: b + 1, kind: "snare" });
+        }
+        for (let h = 0; h < total; h += 0.5) {
+          ev.push({ t: h, kind: "hat", open: Math.abs((h % bar) - (bar - 0.5)) < 1e-6 });
+        }
+      }
+    }
+
+    ev.sort((a, b) => a.t - b.t);
+    return { events: ev, total: total };
+  }
+
+  /* ---------- playback ---------- */
+
+  let out = null, timer = null, playing = null;
+
+  function output(c) {
+    if (out && out.ctx === c) return out;
+    const lim = c.createDynamicsCompressor();
+    lim.threshold.value = -10;
+    lim.knee.value = 10;
+    lim.ratio.value = 6;
+    lim.attack.value = 0.005;
+    lim.release.value = 0.2;
+    lim.connect(c.destination);
+    const g = c.createGain();
+    g.gain.value = volume;
+    g.connect(lim);
+    out = { ctx: c, gain: g };
+    return out;
+  }
+
+  function fire(c, ev, when, g) {
+    const spb = playing.spb;
+    if (ev.kind === "lead") lead(c, g, ev.f, when, ev.dur * spb);
+    else if (ev.kind === "bass") bass(c, g, ev.f, when, ev.dur * spb);
+    else if (ev.kind === "stab") stab(c, g, ev.f, when, ev.dur * spb, 0.12);
+    else if (ev.kind === "kick" && drumsOn) kick(c, g, when);
+    else if (ev.kind === "snare" && drumsOn) snare(c, g, when);
+    else if (ev.kind === "hat" && drumsOn) hat(c, g, when, ev.open);
+  }
+
+  // Standard lookahead scheduler: schedule a little way ahead on a timer rather
+  // than creating every node up front, which on a phone would be hundreds of
+  // oscillators in one go for a single tap.
+  function tick() {
+    if (!playing) return;
+    const c = getCtx();
+    const horizon = c.currentTime + 0.25;
+    while (playing.i < playing.events.length) {
+      const ev = playing.events[playing.i];
+      const when = playing.t0 + ev.t * playing.spb;
+      if (when > horizon) break;
+      fire(c, ev, when, playing.gain);
+      playing.i++;
+    }
+    const end = playing.t0 + playing.total * playing.spb;
+    if (playing.i >= playing.events.length && c.currentTime >= end - 0.05) {
+      if (loopOn) {
+        playing.t0 = end;
+        playing.i = 0;
+      } else {
+        stop();
+      }
+    }
+  }
+
+  function start(song, btn) {
+    stop();
+    const c = getCtx();
+    const o = output(c);
+    const g = c.createGain();
+    g.gain.value = 1;
+    g.connect(o.gain);
+    const built = build(song);
+    playing = {
+      song: song, btn: btn, gain: g,
+      events: built.events, total: built.total, i: 0,
+      spb: 60 / (song.bpm * tempoScale),
+      t0: c.currentTime + 0.12
+    };
+    timer = setInterval(tick, 25);
+    tick();
+    btn.classList.add("playing");
+    btn.querySelector(".song-play").textContent = "■";
+  }
+
+  function stop() {
+    if (timer) { clearInterval(timer); timer = null; }
+    if (!playing) return;
+    const c = getCtx();
+    const g = playing.gain;
+    g.gain.cancelScheduledValues(c.currentTime);
+    g.gain.setTargetAtTime(0, c.currentTime, 0.015);
+    setTimeout(() => { try { g.disconnect(); } catch (_) {} }, 400);
+    playing.btn.classList.remove("playing");
+    playing.btn.querySelector(".song-play").textContent = "▶";
+    playing = null;
+  }
+
+  /* ---------- controls ---------- */
+
+  volSlider.addEventListener("input", () => {
+    volume = parseFloat(volSlider.value);
+    volVal.textContent = Math.round(volume * 100) + "%";
+    if (out) out.gain.gain.setTargetAtTime(volume, out.ctx.currentTime, 0.02);
+  });
+  // 'change' not 'input': tempo restarts the tune, which would be unusable if
+  // it fired on every pixel of slider drag.
+  tempoSlider.addEventListener("input", () => {
+    tempoVal.textContent = Math.round(parseFloat(tempoSlider.value) * 100) + "%";
+  });
+  tempoSlider.addEventListener("change", () => {
+    tempoScale = parseFloat(tempoSlider.value);
+    if (playing) { const s = playing.song, b = playing.btn; stop(); start(s, b); }
+  });
+  drumBtn.addEventListener("click", () => {
+    drumsOn = !drumsOn;
+    drumBtn.textContent = drumsOn ? "on" : "off";
+    drumBtn.classList.toggle("on", drumsOn);
+  });
+  loopBtn.addEventListener("click", () => {
+    loopOn = !loopOn;
+    loopBtn.textContent = loopOn ? "on" : "off";
+    loopBtn.classList.toggle("on", loopOn);
+  });
+  stopBtn.addEventListener("click", stop);
+
+  /* ---------- the tunes ---------- */
+
+  const SONGS = [
+    {
+      name: "Für Elise", by: "Beethoven, 1810", bpm: 76, bar: 1.5, style: "arp", drums: false,
+      melody: "e5/16 d#5/16 e5/16 d#5/16 e5/16 b4/16 d5/16 c5/16 a4/8 r/16 c4/16 e4/16 a4/16 " +
+              "b4/8 r/16 e4/16 g#4/16 b4/16 c5/8 r/16 e4/16 " +
+              "e5/16 d#5/16 e5/16 d#5/16 e5/16 b4/16 d5/16 c5/16 a4/8 r/16 c4/16 e4/16 a4/16 " +
+              "b4/8 r/16 e4/16 c5/16 b4/16 a4/4",
+      chords: "am:3.5 e:1.5 am:4.5 e:1.5 am:1"
+    },
+    {
+      name: "Ode to Joy", by: "Beethoven, 1824", bpm: 112, bar: 4, style: "march",
+      melody: "e5/4 e5/4 f5/4 g5/4 g5/4 f5/4 e5/4 d5/4 c5/4 c5/4 d5/4 e5/4 e5/4. d5/8 d5/2 " +
+              "e5/4 e5/4 f5/4 g5/4 g5/4 f5/4 e5/4 d5/4 c5/4 c5/4 d5/4 e5/4 d5/4. c5/8 c5/2",
+      chords: "c:4 g:2 c:2 c:2 g:2 g:4 c:4 g:2 c:2 c:2 g:2 g:2 c:2"
+    },
+    {
+      name: "Turkish March", by: "Mozart, 1783", bpm: 120, bar: 2, style: "march",
+      melody: "b4/16 a4/16 g#4/16 a4/16 c5/8 e5/8 d5/16 c5/16 b4/16 c5/16 e5/8 g5/8 " +
+              "f5/16 e5/16 d#5/16 e5/16 b5/8 a5/8 g#5/16 a5/16 b5/16 a5/16 c6/8 a5/8 " +
+              "b5/16 a5/16 g#5/16 a5/16 c6/4",
+      chords: "am:2 am:2 e:2 am:2 e:1 am:1"
+    },
+    {
+      name: "Canon in D", by: "Pachelbel, c.1680", bpm: 64, bar: 4, style: "march",
+      melody: "f#5/2 e5/2 d5/2 c#5/2 b4/2 a4/2 b4/2 c#5/2",
+      chords: "d:2 a:2 bm:2 f#m:2 g:2 d:2 g:2 a:2"
+    },
+    {
+      name: "Twinkle Twinkle", by: "Traditional", bpm: 108, bar: 4, style: "march",
+      melody: "c5/4 c5/4 g5/4 g5/4 a5/4 a5/4 g5/2 f5/4 f5/4 e5/4 e5/4 d5/4 d5/4 c5/2 " +
+              "g5/4 g5/4 f5/4 f5/4 e5/4 e5/4 d5/2 g5/4 g5/4 f5/4 f5/4 e5/4 e5/4 d5/2 " +
+              "c5/4 c5/4 g5/4 g5/4 a5/4 a5/4 g5/2 f5/4 f5/4 e5/4 e5/4 d5/4 d5/4 c5/2",
+      chords: "c:4 f:2 c:2 f:2 c:2 g:2 c:2 c:2 g:2 c:2 g:2 c:2 g:2 c:2 g:2 c:4 f:2 c:2 f:2 c:2 g:2 c:2"
+    },
+    {
+      name: "Mary Had a Little Lamb", by: "Traditional", bpm: 108, bar: 4, style: "march",
+      melody: "e5/4 d5/4 c5/4 d5/4 e5/4 e5/4 e5/2 d5/4 d5/4 d5/2 e5/4 g5/4 g5/2 " +
+              "e5/4 d5/4 c5/4 d5/4 e5/4 e5/4 e5/4 e5/4 d5/4 d5/4 e5/4 d5/4 c5/1",
+      chords: "c:4 c:4 g:4 c:4 c:4 c:4 g:2 c:2 c:4"
+    },
+    {
+      name: "Jingle Bells", by: "Pierpont, 1857", bpm: 132, bar: 4, style: "march",
+      melody: "b4/4 b4/4 b4/2 b4/4 b4/4 b4/2 b4/4 d5/4 g4/4. a4/8 b4/1 " +
+              "c5/4 c5/4 c5/4. c5/8 c5/4 b4/4 b4/8 b4/8 b4/4 d5/4 d5/4 c5/4 a4/4 g4/1",
+      chords: "g:4 g:4 g:4 g:4 c:4 g:4 d:4 g:4"
+    },
+    {
+      name: "London Bridge", by: "Traditional", bpm: 120, bar: 4, style: "march",
+      melody: "g5/4 a5/4 g5/4 f5/4 e5/4 f5/4 g5/2 d5/4 e5/4 f5/2 e5/4 f5/4 g5/2 " +
+              "g5/4 a5/4 g5/4 f5/4 e5/4 f5/4 g5/2 d5/2 g5/4 e5/4 c5/1",
+      chords: "c:4 c:2 g:2 g:4 g:2 c:2 c:4 c:2 g:2 g:2 c:2 c:4"
+    },
+    {
+      name: "Frère Jacques", by: "Traditional", bpm: 110, bar: 4, style: "march",
+      melody: "c5/4 d5/4 e5/4 c5/4 c5/4 d5/4 e5/4 c5/4 e5/4 f5/4 g5/2 e5/4 f5/4 g5/2 " +
+              "g5/8 a5/8 g5/8 f5/8 e5/4 c5/4 g5/8 a5/8 g5/8 f5/8 e5/4 c5/4 " +
+              "c5/4 g4/4 c5/2 c5/4 g4/4 c5/2",
+      chords: "c:24 g:2 c:2 g:2 c:2"
+    },
+    {
+      name: "Happy Birthday", by: "Traditional", bpm: 108, bar: 3, style: "waltz",
+      melody: "r/2 g4/8 g4/8 a4/4 g4/4 c5/4 b4/2 g4/8 g4/8 a4/4 g4/4 d5/4 c5/2 " +
+              "g4/8 g4/8 g5/4 e5/4 c5/4 b4/4 a4/4 f5/8 f5/8 e5/4 c5/4 d5/4 c5/2.",
+      chords: "c:3 c:3 g:3 g:3 c:3 c:3 f:3 c:1.5 g:1.5 c:3"
+    }
+  ];
+
+  SONGS.forEach((song) => {
+    const btn = document.createElement("button");
+    btn.className = "song-btn";
+    btn.innerHTML = '<span><span class="song-name"></span><br><span class="song-by"></span></span>' +
+                    '<span class="song-play">▶</span>';
+    btn.querySelector(".song-name").textContent = song.name;
+    btn.querySelector(".song-by").textContent = song.by;
+    btn.addEventListener("click", () => {
+      if (playing && playing.song === song) stop();
+      else start(song, btn);
+    });
+    list.appendChild(btn);
+  });
 })();
 </script>
 </body>

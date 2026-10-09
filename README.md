@@ -7,6 +7,7 @@ A phone-as-microphone + sound-effects board for any Bluetooth speaker. Installab
 - **Mic tab** — opens the phone mic and pipes it straight to the phone's audio output (which is the paired Bluetooth speaker) via the Web Audio API. Gain control, live level meter with clip indicator, optional echo cancellation / noise suppression.
 - **Board tab** — 10 sound effects (alarm, laugh, air horn, applause, drum roll, ding, boing, buzzer, crowd cheer, record scratch), bundled as CC0 recordings and loudness-matched on load. Everything runs through a shared limiter so stacked pads can't clip the speaker.
 - **Find Sounds** — search Freesound from inside the app and swap any pad. Swaps are stored on the device and work offline. Needs a free Freesound API key, entered once and kept in the browser.
+- **Songs tab** — ten demo tunes in the style keyboards and toys shipped with: square-wave lead, auto-accompaniment, drum machine. Synthesized on the phone, all public domain. Tempo, drums and loop controls.
 - Effects auto-duck the mic briefly when triggered, so they cut through without feedback.
 - Installable: manifest + service worker + icons included. "Add to Home Screen" gives a standalone app with offline launch.
 
@@ -37,11 +38,36 @@ These are Freesound's public preview MP3s (~870 KB for all ten), which is ample 
 Bluetooth speaker. If you swap a pad via in-app search, check the license of what you pick —
 the search defaults to CC0 only, and warns you when you turn that filter off.
 
+## The songs page
+
+The tunes are generated, not recorded. That is both the authentic sound — a preloaded
+keyboard demo *was* a cheap synth playing a public domain melody — and the reason there is
+nothing to license and nothing to download. It is the opposite trade from the soundboard,
+where synthesis failed precisely because it was imitating real acoustics.
+
+Each tune is a melody string and a chord track:
+
+```
+melody: "e5/4 e5/4 f5/4 g5/4 ..."     note, octave, / denominator, . for dotted, r for rest
+chords: "c:4 g:2 c:2 ..."             chord, : length in quarter-note beats
+```
+
+The accompaniment is generated from the chord track the way a keyboard's auto-accompaniment
+did — pick a style (`march`, `waltz`, `arp`), get a bass line, chord stabs and a drum
+pattern. Adding a tune means adding those two strings, a tempo and a bar length; no audio.
+
+Notes are scheduled with a 25 ms lookahead rather than created up front, because a single
+tap would otherwise build several hundred oscillators at once.
+
+**All ten are public domain**: Beethoven (Für Elise, Ode to Joy), Mozart (Turkish March),
+Pachelbel (Canon in D), Pierpont (Jingle Bells, 1857), and traditional melodies. Happy
+Birthday entered the public domain in 2016.
+
 ## Files
 
 | File | Purpose |
 |---|---|
-| `index.html` | The entire app — UI, mic logic, sound engine, Freesound search |
+| `index.html` | The entire app — UI, mic logic, sound engine, Freesound search, song sequencer |
 | `sounds/*.mp3` | The ten bundled CC0 effects |
 | `manifest.json` | PWA metadata (name, icons, display mode) |
 | `sw.js` | Service worker — caches the app shell for offline/instant launch |
